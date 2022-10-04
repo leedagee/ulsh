@@ -7,6 +7,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "prompt.h"
+
 void handle_sigint(int sig) {
   // do nothing.
 }
@@ -14,7 +16,9 @@ void handle_sigint(int sig) {
 int main() {
   signal(SIGINT, handle_sigint);
   for (;;) {
-    char *cmd = readline("> ");
+    char *prompt = getprompt();
+    char *cmd = readline(prompt);
+    free(prompt);
     if (cmd == NULL) {
       putchar('\n');
       exit(0);
