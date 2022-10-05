@@ -7,14 +7,40 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "builtins/builtin.h"
 #include "prompt.h"
 
 void handle_sigint(int sig) {
   // do nothing.
 }
 
+int execute(int argc, char *argv[]) {
+  BUILTIN_HANDLER handler = builtin_find_entry(argv[0]);
+  if (handler != NULL) {
+    return handler(argc, (const char **)argv);
+  }
+
+  pid_t pid;
+  if ((pid = vfork()) == -1) {
+    perror("Cannot vfork");
+  }
+  if (pid == 0) {
+    execvp(argv[0], argv);
+    // we can't do perror here because of the vfork
+    exit(255);
+  }
+
+  int wstatus;
+  if (waitpid(pid, &wstatus, WUNTRACED) == -1) {
+    perror("Cannot wait for child");
+  }
+
+  return WEXITSTATUS(wstatus);
+}
+
 int main() {
   signal(SIGINT, handle_sigint);
+  builtin_init();
   for (;;) {
     char *prompt = getprompt();
     char *cmd = readline(prompt);
@@ -33,20 +59,7 @@ int main() {
       }
     }
 
-    pid_t pid;
-    if ((pid = vfork()) == -1) {
-      perror("Cannot vfork");
-    }
-    if (pid == 0) {
-      execvp(cargv[0], cargv);
-      // we can't do perror here because of the vfork
-      exit(255);
-    }
-
-    int wstatus;
-    if (waitpid(pid, &wstatus, WUNTRACED) == -1) {
-      perror("Cannot wait for child");
-    }
+    execute(cargc, cargv);
 
     free(cmd);
   }
