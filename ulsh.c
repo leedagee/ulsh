@@ -12,6 +12,7 @@
 
 void handle_sigint(int sig) {
   // do nothing.
+  // but is it proper?
 }
 
 int execute(int argc, char *argv[]) {
@@ -27,7 +28,19 @@ int execute(int argc, char *argv[]) {
   if (pid == 0) {
     execvp(argv[0], argv);
     // we can't do perror here because of the vfork
-    exit(255);
+    _exit(255); // and exit without flushing stdio
+
+    /* 
+     * bash do stat(2) before doing any fork/vfork/clone syscalls
+     * to detect a potential command not found. If we do nothing
+     * special here we simply cannot do anything with a execve error.
+     * and the return value carries information too limited, the main
+     * process can only receive a non-zero return value but determine
+     * the source. another way to do message transport is use a pipe
+     * or at least a fd, vfork makes this impossible too.
+     * vfork maybe too limited to be used here.
+     * maybe it's time to have a look at clone(2)
+     */
   }
 
   int wstatus;

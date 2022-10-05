@@ -4,10 +4,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <linux/limits.h>
 
 BUILTIN_DECLARE(pwd) {
-  char buf[1024];
-  getcwd(buf, 1024);
+  char buf[PATH_MAX];
+  getcwd(buf, PATH_MAX);
   puts(buf);
   return 0;
 }
