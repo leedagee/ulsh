@@ -2,7 +2,11 @@
 #include <stdio.h>
 
 #include "../builtins/builtin.h"
-#define BODY(NAME) {puts(#NAME); return 0;}
+#define BODY(NAME) \
+  {                \
+    puts(#NAME);   \
+    return 0;      \
+  }
 #define TESTFUNC(NAME) BUILTIN_DECLARE(NAME) BODY(NAME)
 
 TESTFUNC(ls)

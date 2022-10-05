@@ -3,6 +3,7 @@
 #include <stdlib.h>
 
 #include "dirops.h"
+#include "procops.h"
 
 struct builtin_trie_node *builtin_new_node() {
   static struct builtin_trie_node nodes[BUILTIN_NODE_NUM];
@@ -39,6 +40,12 @@ BUILTIN_HANDLER builtin_find_entry(const char *name) {
 }
 
 void builtin_init() {
+  // dirops
   BUILTIN_ADD_COMMAND(cd);
   BUILTIN_ADD_COMMAND(pwd);
+
+  // procops
+  BUILTIN_ADD_COMMAND(exec);
+  BUILTIN_ADD_COMMAND(exit);
+  BUILTIN_ADD_COMMAND(export);
 }
