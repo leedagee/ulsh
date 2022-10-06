@@ -16,3 +16,5 @@ target_link_libraries(ulsh readline builtin)
 
 add_subdirectory(tests)
 enable_testing()
+
+add_subdirectory(c0r3uti1s)
