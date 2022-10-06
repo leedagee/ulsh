@@ -8,6 +8,8 @@
 #include <time.h>
 #include <unistd.h>
 
+#include "exec.h"
+
 char *getprompt() {
   char buf[256];
   size_t avail = PROMPT_LENGTH;
@@ -41,8 +43,18 @@ char *getprompt() {
   time_t raw_time;
   time(&raw_time);
   struct tm *bd_time = localtime(&raw_time);
-  snprintf(cursor, avail, "%02d:%02d:%02d\n> ", bd_time->tm_hour,
+  consumed = snprintf(cursor, avail, "%02d:%02d:%02d ", bd_time->tm_hour,
            bd_time->tm_min, bd_time->tm_sec);
+  cursor += consumed;
+  avail -= consumed;
+
+  if (last_return_value) {
+    consumed = snprintf(cursor, avail, "$?=%d", last_return_value);
+    cursor += consumed;
+    avail -= consumed;
+  }
+
+  consumed = snprintf(cursor, avail, "\n> ");
   cursor += consumed;
   avail -= consumed;
 

@@ -13,6 +13,10 @@ set(SOURCES
 
 #add_compile_definitions(DEBUG_PARSER)
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
+add_compile_options(-fsanitize=address)
+add_link_options(-fsanitize=address)
+
 add_executable(ulsh ${SOURCES})
 
 include_directories(/usr/include/readline)

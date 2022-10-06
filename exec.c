@@ -42,10 +42,16 @@ int execute(int flags, int argc, char *argv[], pid_t *pid_store, int fd_in,
       if (dup2(fd_in, 0) == -1) {
         perror("Cannot set stdin");
       }
+      if (close(fd_in) == -1) {
+        perror("Cannot close old fd");
+      }
     }
     if (flags & EXECUTE_DUP_STDOUT) {
       if (dup2(fd_out, 1) == -1) {
         perror("Cannot set stdout");
+      }
+      if (close(fd_out) == -1) {
+        perror("Cannot close old fd");
       }
     }
 
@@ -83,5 +89,5 @@ int execute(int flags, int argc, char *argv[], pid_t *pid_store, int fd_in,
     perror("Cannot wait for child");
   }
 
-  return WEXITSTATUS(wstatus);
+  return last_return_value = WEXITSTATUS(wstatus);
 }
