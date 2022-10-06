@@ -7,7 +7,11 @@ add_subdirectory(builtins)
 set(SOURCES 
     ulsh.c
     prompt.c
+    parser.c
+    exec.c
 )
+
+#add_compile_definitions(DEBUG_PARSER)
 
 add_executable(ulsh ${SOURCES})
 
