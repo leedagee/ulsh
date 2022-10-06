@@ -38,6 +38,7 @@ void list(const char *target, int options) {
   struct dirent *ent;
 
   int fd = openat(AT_FDCWD, target, O_RDONLY);
+  // TODO: file without reading permission can be stated but not opened?
   if (fd == -1) {
     fprintf(stderr, "Cannot open %s: %s\n", target, strerror(errno));
     return;
