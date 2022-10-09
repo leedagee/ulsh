@@ -1,4 +1,5 @@
 #include <readline/readline.h>
+#include <readline/history.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +25,7 @@ int main(int argc, char *argv[]) {
 
     char *prompt = getprompt();
     char *cmd = readline(prompt);
+    add_history(cmd);
     free(prompt);
 
     if (cmd == NULL) {
