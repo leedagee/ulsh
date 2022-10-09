@@ -9,6 +9,6 @@ void rm(const char *filename) {
   }
 }
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
   for (int i = 1; i < argc; i++) rm(argv[i]);
 }

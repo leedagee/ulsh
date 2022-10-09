@@ -1,9 +1,9 @@
 #pragma once
 #define BUILTIN_NODE_NUM 2048
 #define BUILTIN_ADD_COMMAND(NAME) builtin_put_entry(#NAME, builtin_##NAME)
-#define BUILTIN_DECLARE(NAME) int builtin_##NAME(int argc, const char* argv[])
+#define BUILTIN_DECLARE(NAME) int builtin_##NAME(int argc, char* argv[])
 
-typedef int (*BUILTIN_HANDLER)(int, const char*[]);
+typedef int (*BUILTIN_HANDLER)(int, char*[]);
 
 struct builtin_trie_node {
   struct builtin_trie_node* head;

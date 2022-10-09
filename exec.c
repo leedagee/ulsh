@@ -27,7 +27,7 @@ int execute(int flags, int argc, char *argv[], pid_t *pid_store, int fd_in,
   BUILTIN_HANDLER handler = builtin_find_entry(argv[0]);
   if (handler != NULL) {
     if (!(flags & EXECUTE_MUST_FORK)) {
-      return handler(argc, (const char **)argv);
+      return handler(argc, argv);
     }
   } else {
     handler = (BUILTIN_HANDLER)executer_execvp;
@@ -55,7 +55,7 @@ int execute(int flags, int argc, char *argv[], pid_t *pid_store, int fd_in,
       }
     }
 
-    exit(handler(argc, (const char **)argv));
+    exit(handler(argc, argv));
 
     /*
      * bash do stat(2) before doing any fork/vfork/clone syscalls

@@ -1,24 +1,30 @@
 #include <errno.h>
 #include <getopt.h>
-#include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
-int main(int argc, const char *argv[]) {
+void usage() {
+  fprintf(stderr, "Usage: ln [-s] <source> <target>\n");
+  exit(1);
+}
+
+int main(int argc, char *argv[]) {
   int opt;
   int do_symlink = 0;
-  while ((opt = getopt(argc, (char *const *)argv, "s")) != -1) {
+  while ((opt = getopt(argc, argv, "s")) != -1) {
     switch (opt) {
       case 's':
         do_symlink = 1;
         break;
+      default:
+        usage();
     }
   }
 
   if (optind + 2 != argc) {
-    fprintf(stderr, "ln takes exactly two arguments.\n");
-    return 1;
+    usage();
   }
 
   if (do_symlink) {

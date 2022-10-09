@@ -15,9 +15,9 @@ int renameat2(int olddirfd, const char *oldpath, int newdirfd,
   return syscall(SYS_renameat2, olddirfd, oldpath, newdirfd, newpath, flags);
 }
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
   if (argc <= 2) {
-    fprintf(stderr, "mv takes two or more arguments.\n");
+    fprintf(stderr, "Usage: mv <file1> [file2] ... <target>\n");
     return 1;
   }
 
@@ -35,29 +35,28 @@ int main(int argc, const char *argv[]) {
   for (int i = 1; i + 1 < argc; i++) {
     int ret = renameat2(AT_FDCWD, argv[i], AT_FDCWD, argv[argc - 1],
                         RENAME_NOREPLACE);
-    if (ret == -1) {
-      if (errno == EEXIST) {
-        struct stat st;
-        if (stat(argv[argc - 1], &st) == -1) {
-          perror("Cannot stat target file");
-        }
-        if ((st.st_mode & S_IFMT) == S_IFDIR) {
-          char buf[PATH_MAX];
-          sprintf(buf, "%s/%s", argv[argc - 1], basename((char *)argv[i]));
-          if (renameat(AT_FDCWD, argv[i], AT_FDCWD, buf) == -1) {
-            perror("Cannot rename file");
-            continue;
-          }
-        } else {
-          if (renameat(AT_FDCWD, argv[i], AT_FDCWD, argv[argc - 1]) == -1) {
-            perror("Cannot rename file");
-            continue;
-          }
-        }
-      } else {
-        perror("Cannot rename file");
-        continue;
-      }
+    if (ret == 0) continue;
+
+    if (errno != EEXIST) {
+      perror("Cannot rename file");
+      continue;
+    }
+
+    struct stat st;
+    if (stat(argv[argc - 1], &st) == -1) {
+      perror("Cannot stat target file");
+      continue;
+    }
+
+    char *target = argv[argc - 1];
+    if ((st.st_mode & S_IFMT) == S_IFDIR) {
+      char buf[PATH_MAX];
+      sprintf(buf, "%s/%s", argv[argc - 1], basename(argv[i]));
+      target = buf;
+    }
+
+    if (rename(argv[i], target) == -1) {
+      perror("Cannot rename file");
     }
   }
 }

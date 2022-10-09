@@ -1,8 +1,10 @@
+#include <getopt.h>
 #include <stdio.h>
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
   for (int i = 1; i < argc; i++) {
     fputs(argv[i], stdout);
-    fputc(i + 1 == argc ? '\n' : ' ', stdout);
+    if (i + 1 != argc) putchar(' ');
   }
+  putchar('\n');
 }

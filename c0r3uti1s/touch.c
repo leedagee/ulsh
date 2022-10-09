@@ -6,7 +6,7 @@
 #include <sys/types.h>
 
 void touch(const char *filename) {
-  int fd = openat(AT_FDCWD, filename, O_RDONLY | O_CREAT, 0666);
+  int fd = open(filename, O_RDONLY | O_CREAT, 0666);
   if (fd == -1) {
     fprintf(stderr, "Cannot open %s: %s\n", filename, strerror(errno));
     return;

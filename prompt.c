@@ -7,11 +7,12 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+#include <linux/limits.h>
 
 #include "exec.h"
 
 char *getprompt() {
-  char buf[256];
+  char buf[PATH_MAX];
   size_t avail = PROMPT_LENGTH;
   char *prompt = malloc(PROMPT_LENGTH);
   char *cursor = prompt;

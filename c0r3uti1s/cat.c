@@ -1,19 +1,34 @@
+#include <fcntl.h>
 #include <stdio.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
 
-#define BUFFER_SIZE 16384
+#define BUFFER_SIZE (1<<18)
 
-void cat(const char *filename) {
-  FILE *fp = fopen(filename, "r");
+void cat(int fd) {
   char buf[BUFFER_SIZE];
-  while (!feof(fp)) {
-    size_t len = fread(buf, 1, BUFFER_SIZE, fp);
-    fwrite(buf, 1, len, stdout);
+  for (;;) {
+    ssize_t len = read(fd, buf, BUFFER_SIZE);
+    if (len == 0) {
+      // end of file
+      return;
+    }
+    if (len == -1) {
+      perror("Cannot read inputs");
+      return;
+    }
+    write(1, buf, len);
   }
-  fclose(fp);
 }
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
+  if (argc == 1) {
+    cat(0);
+  }
   for (int i = 1; i < argc; i++) {
-    cat(argv[i]);
+    int fd = open(argv[argc], O_RDONLY);
+    cat(fd);
+    close(fd);
   }
 }

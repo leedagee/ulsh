@@ -47,7 +47,7 @@ BUILTIN_DECLARE(export) {
 }
 
 BUILTIN_DECLARE(exec) {
-  if (execvp(argv[1], (char *const *)(argv + 1)) == -1) {
+  if (execvp(argv[1], argv + 1) == -1) {
     perror("Cannot exec");
   }
   return 1;

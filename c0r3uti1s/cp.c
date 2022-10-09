@@ -8,38 +8,27 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define BUFFER_SIZE 16384
-
 // will close both in and out
 void copy(FILE *in, FILE *out) {
-  char buf[BUFFER_SIZE];
+  char buf[BUFSIZ];
   while (!feof(in)) {
-    size_t len = fread(buf, 1, BUFFER_SIZE, in);
-    if (len == 0 && errno) {
+    size_t len = fread(buf, 1, BUFSIZ, in);
+    if (len != BUFSIZ && ferror(in) && errno) {
       perror("Cannot read source file");
-      fclose(in);
-      fclose(out);
       return;
     }
-    char *buf_end = buf + len;
-    while (len) {
-      len -= fwrite(buf_end - len, 1, len, out);
-      if (errno) {
-        perror("Cannot write target file");
-        fclose(in);
-        fclose(out);
-        return;
-      }
+    size_t wlen = fwrite(buf, 1, len, out);
+    if (wlen != len && ferror(out) && errno) {
+      perror("Cannot write target file");
+      return;
     }
   }
-  fclose(in);
-  fclose(out);
   return;
 }
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
   if (argc <= 2) {
-    fprintf(stderr, "cp takes two or more arguments.\n");
+    fprintf(stderr, "Usage: cp <source1> [source2] ... <target>\n");
     return 1;
   }
 
@@ -50,11 +39,9 @@ int main(int argc, const char *argv[]) {
       perror("Cannot stat target");
       return 1;
     }
-  }
-  if ((st.st_mode & S_IFMT) == S_IFDIR) {
+  } else if ((st.st_mode & S_IFMT) == S_IFDIR) {
     is_target_directory = 1;
-  }
-  if (argc != 3 && (st.st_mode & S_IFMT) != S_IFDIR) {
+  } else if (argc > 3) {
     fprintf(stderr, "Target is not a directory.\n");
     return 1;
   }
@@ -80,6 +67,7 @@ int main(int argc, const char *argv[]) {
       sprintf(out_file, "%s/%s", argv[argc - 1], bn);
       out = out_file;
     }
+
     FILE *fin = fopen(argv[i], "r");
     if (fin == NULL) {
       perror("Failed to open source file");
@@ -92,6 +80,8 @@ int main(int argc, const char *argv[]) {
       continue;
     }
     copy(fin, fout);
+    fclose(fin);
+    fclose(fout);
     chmod(out, st.st_mode);
   }
 }

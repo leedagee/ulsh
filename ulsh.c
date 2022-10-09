@@ -15,7 +15,7 @@ void handle_sigint(int sig) {
   // but is it proper?
 }
 
-int main() {
+int main(int argc, char *argv[]) {
   signal(SIGINT, handle_sigint);
   builtin_init();
   pid_t childs[128];

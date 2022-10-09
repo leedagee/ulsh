@@ -10,6 +10,7 @@
 
 #define LS_OPTION_LONG 0x0001
 #define LS_OPTION_SINGLEENT 0x0002
+#define LS_OPTION_ALL 0x0004
 
 void usage() {
   puts("Usage: ls [-l] <file1> <file2> ...");
@@ -22,8 +23,12 @@ void printlong(struct stat *st, const char *filename) {
 }
 
 void printdirent(int parent_fd, struct dirent *ent, int options) {
-  struct stat st;
+  if (!(options & LS_OPTION_ALL) && *ent->d_name == '.') {
+    return;
+  }
+
   if (options & LS_OPTION_LONG) {
+    struct stat st;
     if (fstatat(parent_fd, ent->d_name, &st, 0) == -1) {
       perror("Cannot stat file");
       return;
@@ -35,33 +40,29 @@ void printdirent(int parent_fd, struct dirent *ent, int options) {
 }
 
 void list(const char *target, int options) {
-  struct dirent *ent;
-
-  int fd = openat(AT_FDCWD, target, O_RDONLY);
-  // TODO: file without reading permission can be stated but not opened?
-  if (fd == -1) {
-    fprintf(stderr, "Cannot open %s: %s\n", target, strerror(errno));
-    return;
-  }
-
   struct stat st;
-  if (fstat(fd, &st) == -1) {
-    perror("Failed to stat");
+  if (stat(target, &st) == -1) {
+    perror("Failed to stat target file");
     return;
   }
 
   if ((st.st_mode & S_IFMT) == S_IFDIR) {
-    if ((options & LS_OPTION_SINGLEENT) != 0) {
-      printf("%s:\n", target);
+    if ((options & LS_OPTION_SINGLEENT) == 0) {
+      printf("\n%s:\n", target);
+    }
+    int fd = open(target, O_RDONLY);
+    if (fd == -1) {
+      fprintf(stderr, "Cannot open directory %s: %s\n", target,
+              strerror(errno));
+      return;
     }
     DIR *dirp = fdopendir(fd);
+    struct dirent *ent;
     while ((ent = readdir(dirp)) != NULL) {
       printdirent(fd, ent, options);
     }
-    if (errno) {
-      perror("Failed to read directory");
-      return;
-    }
+    closedir(dirp);
+    close(fd);
   } else if (options & LS_OPTION_LONG) {
     printlong(&st, target);
   } else {
@@ -69,23 +70,28 @@ void list(const char *target, int options) {
   }
 }
 
-int main(int argc, const char *argv[]) {
+int main(int argc, char *argv[]) {
   int options = 0;
   int c;
-  while ((c = getopt(argc, (char *const *)argv, "lH")) != -1) {
+  while ((c = getopt(argc, (char *const *)argv, "la")) != -1) {
     switch (c) {
       case 'l':
         options |= LS_OPTION_LONG;
         break;
-      case 'H':
+      case 'a':
+        options |= LS_OPTION_ALL;
+        break;
+      default:
         usage();
     }
+  }
+
+  if (optind + 1 > argc) {
+    options |= LS_OPTION_SINGLEENT;
   }
   if (optind == argc) {
     list(".", options);
     return 0;
-  } else if (optind + 1 == argc) {
-    options |= LS_OPTION_SINGLEENT;
   }
   for (; optind < argc; optind++) {
     list(argv[optind], options);
