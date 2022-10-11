@@ -9,14 +9,15 @@
 #include "exec.h"
 
 // pipe_in = 0 for no redirection
-int parse_command(const char *cmd, int pipe_in, int flags, pid_t *pid_store) {
+// returns the pgid/first pid of new process
+int parse_command(const char *cmd, int pipe_in, int flags, pid_t pgrp) {
   char *buf = malloc(ARG_MAX), *m = buf;
   char *cargv[128], *f_in = NULL, *f_out = NULL;
   int cargc = 0,     // command argc and argv
       in_quote = 0,  // 0 for normal, 1 for in a "" quote
       in_argv = 0,   // 0 for parsing unused chars, 1 for copying into buffer
                      // 2 for waiting for copying input file name, 3 for output
-      out_append = 0, no_wait = 0;
+      out_append = 0;
   const char *c;
   for (c = cmd; *c && *c != '|' && *c != '&'; c++, m++) {
     if (in_quote) {
@@ -83,21 +84,21 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t *pid_store) {
   if (in_argv) {
     *m = '\0';
   }
+  cargv[cargc] = NULL;
+
   if (cargc == 0) {
+    free(buf);
     return 0;
   }
-  cargv[cargc] = NULL;
+
   int pipefd[2] = {-1, -1};
   if (*c == '|') {
     pipe(pipefd);
     fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
     fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
     flags |= EXECUTE_MUST_FORK;
-    flags |= EXECUTE_NO_WAIT;
-    parse_command(c + 1, pipefd[0], flags, pid_store + 1);
-  } else if (*c == '&') {
-    no_wait = 1;
   }
+
   int fd_out = pipefd[1], fd_in = pipe_in;
   if (f_out) {
     if (fd_out != -1) close(fd_out);
@@ -106,18 +107,19 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t *pid_store) {
     if (fd_out == -1) {
       fprintf(stderr, "Cannot open file %s for writing: %s\n", f_out,
               strerror(errno));
-      return 1;
+      return -1;
     }
     fcntl(fd_out, F_SETFD, FD_CLOEXEC);
   }
+  
   if (f_in) {
     if (fd_in != -1) close(fd_in);
     fd_in = open(f_in, O_RDONLY);
     if (fd_in == -1) {
-      ;
       fprintf(stderr, "Cannot open file %s for reading: %s\n", f_in,
               strerror(errno));
-      return 1;
+      free(buf);
+      return -1;
     }
     fcntl(fd_in, F_SETFD, FD_CLOEXEC);
   }
@@ -133,10 +135,10 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t *pid_store) {
   }
   fputc('\n', stderr);
 #endif
-  if (no_wait)
-    execute(flags | EXECUTE_NO_WAIT, cargc, cargv, NULL, fd_in, fd_out);
-  else
-    execute(flags, cargc, cargv, pid_store, fd_in, fd_out);
+  pid_t pid = execute(flags, cargc, cargv, fd_in, fd_out, pgrp);
   free(buf);
-  return flags;
+  if (*c == '|')
+    if(parse_command(c + 1, pipefd[0], flags + 1, pid) == 0)
+      return 0;
+  return pid;
 }
