@@ -9,6 +9,7 @@ set(SOURCES
     prompt.c
     parser.c
     exec.c
+    jobs.c
 )
 
 #add_compile_definitions(DEBUG_PARSER)

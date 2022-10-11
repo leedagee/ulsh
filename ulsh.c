@@ -13,6 +13,7 @@
 
 #include "builtins/builtin.h"
 #include "exec.h"
+#include "jobs.h"
 #include "parser.h"
 #include "prompt.h"
 
@@ -25,6 +26,7 @@ int main(int argc, char *argv[]) {
 
   signal(SIGTTOU, SIG_IGN);
   signal(SIGTTIN, SIG_IGN);
+  signal(SIGCHLD, sigchld_handler);
 
   setpgid(0, 0);
 
@@ -51,10 +53,26 @@ int main(int argc, char *argv[]) {
     while (cur < end) {
       struct parse_result_t *res;
       ssize_t s = parse_command(cur, &res);
-      if (res != NULL) free_parse_result(res);
       if (s == -1) break;
+      pid_t pid;
+      siginfo_t si;
+      si.si_pid = 0;
+      run_parsed(res, &pid, 0, -1);
+      tcsetpgrp(255, pid);
+      if (!(res->flags & PARSE_RESULT_BACKGROUND)) {
+        errno = 0;
+        while (errno != ECHILD) {
+          waitid(P_PGID, pid, &si, WEXITED | WSTOPPED);
+          if (si.si_code == CLD_STOPPED) {
+            add_job(pid);
+            tcsetpgrp(255, 0);
+            break;
+          }
+        }
+      }
+      if (res != NULL) free_parse_result(res);
+      tcsetpgrp(255, getpid());
       cur += s;
-      printf("parsed %ld chars.\n", s);
     }
 
     free(cmd);

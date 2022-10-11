@@ -21,7 +21,7 @@ ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
       in_argv = 0,   // 0 for parsing unused chars, 1 for copying into buffer
                      // 2 for waiting for copying input file name, 3 for output
       out_append = 0,
-      cont = 1;      // continue reading
+      cont = 1;  // continue reading
   const char *c;
   for (c = cmd; *c && cont; c++, m++) {
     if (in_quote) {
@@ -73,6 +73,7 @@ ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
         case '|':
         case '&':
         case ';':
+          m--;
           c--;
           cont = 0;
           break;
@@ -145,59 +146,6 @@ ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
       return -1;
   }
 }
-/*
-  int pipefd[2] = {-1, -1};
-  if (*c == '|') {
-    pipe(pipefd);
-    fcntl(pipefd[0], F_SETFD, FD_CLOEXEC);
-    fcntl(pipefd[1], F_SETFD, FD_CLOEXEC);
-    flags |= EXECUTE_MUST_FORK;
-  }
-
-  int fd_out = pipefd[1], fd_in = pipe_in;
-  if (f_out) {
-    if (fd_out != -1) close(fd_out);
-    fd_out =
-        open(f_out, O_CREAT | O_WRONLY | (out_append ? O_APPEND : 0), 0666);
-    if (fd_out == -1) {
-      fprintf(stderr, "Cannot open file %s for writing: %s\n", f_out,
-              strerror(errno));
-      return -1;
-    }
-    fcntl(fd_out, F_SETFD, FD_CLOEXEC);
-  }
-
-  if (f_in) {
-    if (fd_in != -1) close(fd_in);
-    fd_in = open(f_in, O_RDONLY);
-    if (fd_in == -1) {
-      fprintf(stderr, "Cannot open file %s for reading: %s\n", f_in,
-              strerror(errno));
-      free(buf);
-      return -1;
-    }
-    fcntl(fd_in, F_SETFD, FD_CLOEXEC);
-  }
-  if (fd_in != -1) flags |= EXECUTE_DUP_STDIN;
-  if (fd_out != -1) flags |= EXECUTE_DUP_STDOUT;
-#ifdef DEBUG_PARSER
-  fprintf(stderr,
-          "m-buf=%ld\ncargs=%d, in_quote=%d, in_argv=%d, out_append=%d\n",
-          m - buf, cargc, in_quote, in_argv, out_append);
-  fprintf(stderr, "in=\"%s\", out=\"%s\"\n", f_in, f_out);
-  for (int i = 0; i < cargc; i++) {
-    fprintf(stderr, "\"%s\" ", cargv[i]);
-  }
-  fputc('\n', stderr);
-#endif
-  pid_t pid = execute(flags, cargc, cargv, fd_in, fd_out, pgrp);
-  free(buf);
-  if (*c == '|')
-    if(parse_command(c + 1, pipefd[0], flags + 1, pid) == 0)
-      return 0;
-  return pid;
-}
-*/
 
 void free_parse_result(struct parse_result_t *res) {
   if (res->next) {

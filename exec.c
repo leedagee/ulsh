@@ -1,15 +1,18 @@
 #include "exec.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include "builtins/builtin.h"
+#include "jobs.h"
 
 int last_return_value;
 
@@ -59,4 +62,54 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
   if (flags & EXECUTE_DUP_STDOUT) close(fd_out);
 
   return pid;
+}
+
+int run_parsed(struct parse_result_t *res, pid_t *pid, pid_t pgrp, int fd_in) {
+  int fd_out = -1;
+  if (res->f_in) {
+    if (fd_in) close(fd_in);
+    fd_in = open(res->f_in, O_RDONLY);
+    if (fd_in == -1) {
+      fprintf(stderr, "Cannot open file %s as read: %s\n", res->f_in,
+              strerror(errno));
+      return -1;
+    }
+  }
+  int pipefd[2] = {-1, -1};
+  if (res->flags & PARSE_RESULT_PIPE) {
+    if (pipe(pipefd) == -1) perror("Cannot create pipe pairs");
+    fd_out = pipefd[1];
+  }
+  if (res->f_out) {
+    if (fd_out) close(fd_out);
+    fd_out = open(
+        res->f_out,
+        O_WRONLY | O_CREAT | (res->flags & PARSE_RESULT_APPEND) ? O_APPEND : 0);
+    if (fd_out == -1) {
+      fprintf(stderr, "Cannot open file %s as write: %s\n", res->f_in,
+              strerror(errno));
+      return -1;
+    }
+  }
+
+  int options = ((res->flags & PARSE_RESULT_PIPE) ||
+                 (res->flags & PARSE_RESULT_BACKGROUND))
+                    ? EXECUTE_MUST_FORK
+                    : 0;
+
+  if (fd_in != -1) options |= EXECUTE_DUP_STDIN;
+  if (fd_out != -1) options |= EXECUTE_DUP_STDOUT;
+
+  pid_t _pid, *p = (pid == NULL) ? &_pid : pid;
+  *p = execute(options, res->argc, res->argv, fd_in, fd_out, pgrp);
+  if (pgrp == 0) {
+    pgrp = *p;
+    if (res->flags & PARSE_RESULT_BACKGROUND) {
+      add_job(*p);
+    }
+  }
+
+  if (res->next != NULL) {
+    run_parsed(res->next, NULL, pgrp, pipefd[0]);
+  }
 }
