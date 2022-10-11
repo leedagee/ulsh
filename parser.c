@@ -1,3 +1,5 @@
+#include "parser.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <linux/limits.h>
@@ -10,20 +12,22 @@
 
 // pipe_in = 0 for no redirection
 // returns the pgid/first pid of new process
-int parse_command(const char *cmd, int pipe_in, int flags, pid_t pgrp) {
+ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
+  *comp = NULL;
   char *buf = malloc(ARG_MAX), *m = buf;
   char *cargv[128], *f_in = NULL, *f_out = NULL;
   int cargc = 0,     // command argc and argv
       in_quote = 0,  // 0 for normal, 1 for in a "" quote
       in_argv = 0,   // 0 for parsing unused chars, 1 for copying into buffer
                      // 2 for waiting for copying input file name, 3 for output
-      out_append = 0;
+      out_append = 0,
+      cont = 1;      // continue reading
   const char *c;
-  for (c = cmd; *c && *c != '|' && *c != '&'; c++, m++) {
+  for (c = cmd; *c && cont; c++, m++) {
     if (in_quote) {
       switch (*c) {
         case '"':
-          in_quote ^= 1;
+          in_quote = 0;
           m--;
           break;
         case '\\':
@@ -66,6 +70,12 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t pgrp) {
           }
           m--;
           break;
+        case '|':
+        case '&':
+        case ';':
+          c--;
+          cont = 0;
+          break;
         default:
           if (!in_argv) {
             in_argv = 1;
@@ -81,16 +91,61 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t pgrp) {
       }
     }
   }
-  if (in_argv) {
+  if (in_argv == 1) {
     *m = '\0';
+  } else if (in_argv) {
+    fprintf(stderr, "Syntax error: unknown redirection\n");
+    free(buf);
+    return -1;
+  }
+  if (in_quote) {
+    fprintf(stderr, "Syntax error: quote not closed\n");
+    free(buf);
+    return -1;
   }
   cargv[cargc] = NULL;
 
-  if (cargc == 0) {
-    free(buf);
-    return 0;
+  struct parse_result_t *res = malloc(sizeof(struct parse_result_t));
+  memset(res, 0, sizeof(*res));
+
+  res->buf = buf;
+  res->f_in = f_in;
+  res->f_out = f_out;
+  res->argc = cargc;
+  for (int i = 0; i <= cargc; i++) {
+    res->argv[i] = cargv[i];
+  }
+  if (out_append) {
+    res->flags |= PARSE_RESULT_APPEND;
   }
 
+  ssize_t len = c - cmd + 1, nlen = 0;
+
+  if (cargc == 0) {
+    return len;
+  }
+
+  *comp = res;
+
+  switch (*c) {
+    case '|':
+      nlen = parse_command(c + 1, &res->next);
+      if (nlen == -1) return -1;
+      res->flags |=
+          (res->next->flags & PARSE_RESULT_BACKGROUND) | PARSE_RESULT_PIPE;
+      return len + nlen;
+    case '&':
+      res->flags |= PARSE_RESULT_BACKGROUND;
+      return len;
+    case ';':
+    case '\0':
+      return len;
+    default:
+      fprintf(stderr, "parse failed on '%c' with unknown reason\n", *c);
+      return -1;
+  }
+}
+/*
   int pipefd[2] = {-1, -1};
   if (*c == '|') {
     pipe(pipefd);
@@ -111,7 +166,7 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t pgrp) {
     }
     fcntl(fd_out, F_SETFD, FD_CLOEXEC);
   }
-  
+
   if (f_in) {
     if (fd_in != -1) close(fd_in);
     fd_in = open(f_in, O_RDONLY);
@@ -141,4 +196,13 @@ int parse_command(const char *cmd, int pipe_in, int flags, pid_t pgrp) {
     if(parse_command(c + 1, pipefd[0], flags + 1, pid) == 0)
       return 0;
   return pid;
+}
+*/
+
+void free_parse_result(struct parse_result_t *res) {
+  if (res->next) {
+    free_parse_result(res->next);
+  }
+  free(res->buf);
+  free(res);
 }
