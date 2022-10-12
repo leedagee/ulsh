@@ -4,6 +4,7 @@
 
 #include "dirops.h"
 #include "procops.h"
+#include "jobops.h"
 
 struct builtin_trie_node *builtin_new_node() {
   static struct builtin_trie_node nodes[BUILTIN_NODE_NUM];
@@ -48,4 +49,7 @@ void builtin_init() {
   BUILTIN_ADD_COMMAND(exec);
   BUILTIN_ADD_COMMAND(exit);
   BUILTIN_ADD_COMMAND(export);
+
+  // jobops
+  BUILTIN_ADD_COMMAND(jobs);
 }

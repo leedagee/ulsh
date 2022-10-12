@@ -32,6 +32,9 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
           if (flags & EXECUTE_DUP_STDIN) dup2(fd_in, 0);
           if (flags & EXECUTE_DUP_STDOUT) dup2(fd_out, 1);
           setpgid(0, pgrp);
+          if (flags & EXECUTE_FOREGROUND && pgrp == 0) {
+            tcsetpgrp(255, getpid());
+          }
           exit(handler(argc, argv));
           break;
       }
@@ -40,22 +43,20 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
       return 0;
     }
   } else {
-    posix_spawn_file_actions_t file_actions;
-    posix_spawnattr_t attr;
-    if (posix_spawn_file_actions_init(&file_actions) ||
-        ((flags & EXECUTE_DUP_STDIN) &&
-         posix_spawn_file_actions_adddup2(&file_actions, fd_in, 0)) ||
-        ((flags & EXECUTE_DUP_STDOUT) &&
-         posix_spawn_file_actions_adddup2(&file_actions, fd_out, 1)))
-      perror("Cannot set posix_spawn file_actions");
-    if (posix_spawnattr_init(&attr) || posix_spawnattr_setpgroup(&attr, pgrp) ||
-        posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP))
-      perror("Cannot set posix_spawn attrs");
-    if (posix_spawnp(&pid, argv[0], &file_actions, &attr, argv, environ))
-      perror("Cannot perform posix_spawn");
-    if (posix_spawnattr_destroy(&attr) ||
-        posix_spawn_file_actions_destroy(&file_actions))
-      perror("Cannot destroy posix_spawn arguments");
+    if ((pid = fork()) == 0) {
+      if (flags & EXECUTE_DUP_STDIN) dup2(fd_in, 0);
+      if (flags & EXECUTE_DUP_STDOUT) dup2(fd_out, 1);
+      setpgid(0, pgrp);
+      if ((flags & EXECUTE_FOREGROUND) && pgrp == 0) {
+        tcsetpgrp(255, getpid());
+      }
+      execvp(argv[0], argv);
+      perror("Failed to exec");
+      exit(1);
+    }
+    if (pid == -1) {
+      perror("Cannot fork");
+    }
   }
 
   if (flags & EXECUTE_DUP_STDIN) close(fd_in);
@@ -64,7 +65,8 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
   return pid;
 }
 
-int run_parsed(struct parse_result_t *res, pid_t *pid, pid_t pgrp, int fd_in) {
+int run_parsed(struct parse_result_t *res, struct procstat **proc, pid_t pgrp,
+               int fd_in) {
   int fd_out = -1;
   if (res->f_in) {
     if (fd_in) close(fd_in);
@@ -97,19 +99,33 @@ int run_parsed(struct parse_result_t *res, pid_t *pid, pid_t pgrp, int fd_in) {
                     ? EXECUTE_MUST_FORK
                     : 0;
 
+  if (!(res->flags & PARSE_RESULT_BACKGROUND)) options |= EXECUTE_FOREGROUND;
+
   if (fd_in != -1) options |= EXECUTE_DUP_STDIN;
   if (fd_out != -1) options |= EXECUTE_DUP_STDOUT;
 
-  pid_t _pid, *p = (pid == NULL) ? &_pid : pid;
-  *p = execute(options, res->argc, res->argv, fd_in, fd_out, pgrp);
+  pid_t pid;
+  pid = execute(options, res->argc, res->argv, fd_in, fd_out, pgrp);
+
+  if (pid == 0)
+    return 1;
+
+  struct procstat *newproc = malloc(sizeof(struct procstat));
+  newproc->next = NULL;
+  newproc->pid = pid;
+  newproc->retval = -1;
+  newproc->status = PROCSTAT_RUNNING;
+
+  if (proc != NULL) *proc = newproc;
   if (pgrp == 0) {
-    pgrp = *p;
+    pgrp = pid;
     if (res->flags & PARSE_RESULT_BACKGROUND) {
-      add_job(*p);
+      struct job_t *job = add_job(pid);
+      job->procstats = newproc;
     }
   }
 
   if (res->next != NULL) {
-    run_parsed(res->next, NULL, pgrp, pipefd[0]);
+    run_parsed(res->next, &newproc->next, pgrp, pipefd[0]);
   }
 }
