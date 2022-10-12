@@ -1,5 +1,6 @@
 #include "procops.h"
 
+#include <readline/readline.h>
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -18,6 +19,7 @@ BUILTIN_DECLARE(exit) {
   if (sscanf(argv[1], "%d", &return_code) != 1) {
     fprintf(stderr, "Cannot convert %s to a interger.\n", argv[1]);
   }
+  rl_callback_handler_remove ();
   exit(return_code);
   return 1;
 }

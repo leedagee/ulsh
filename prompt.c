@@ -55,9 +55,5 @@ char *getprompt() {
     avail -= consumed;
   }
 
-  consumed = snprintf(cursor, avail, "\n> ");
-  cursor += consumed;
-  avail -= consumed;
-
   return prompt;
 }
