@@ -42,43 +42,7 @@ static void handle_line(char *cmd) {
     if (proc == NULL) goto finalize;
     pid_t pid = proc->pid;
     if (!(res->flags & PARSE_RESULT_BACKGROUND)) {
-      for (;;) {
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(fd_chld, &fds);
-        int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
-        if (r == -1) {
-          perror("Cannot wait on fds");
-          goto finalize;
-        }
-        if (FD_ISSET(fd_chld, &fds)) {
-          reap_children();
-        }
-        while (waitid(P_PGID, pid, &si, WEXITED | WSTOPPED | WNOHANG) != -1)
-          if (si.si_code == CLD_STOPPED) {
-            pid_t pgid = getpgid(si.si_pid);
-            struct job_t **job = find_job(pgid), *_job;
-            if (job == NULL) {
-              job = &_job;
-              *job = add_job(pgid);
-            }
-            struct procstat *now = NULL;
-            for (struct procstat *p = (*job)->procstats; p; p = p->next) {
-              if (p == NULL) break;
-              if (p->pid == si.si_pid) {
-                now = p;
-              }
-            }
-            if (now == NULL) now = malloc(sizeof(struct procstat));
-            now->pid = si.si_pid;
-            now->status = PROCSTAT_STOPPED;
-            now->retval = -1;
-            now->next = (*job)->procstats;
-            (*job)->procstats = now;
-            goto finalize;
-          }
-        if (errno == ECHILD) break;
-      }
+      wait_on_pgrp(pid);
     }
 
   finalize:

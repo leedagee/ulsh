@@ -38,7 +38,7 @@ void add_proc(struct job_t *job, struct procstat *proc) {
 
 void delete_proc(struct procstat *proc) {
   if (proc == NULL) return;
-  if (proc->next != NULL) delete_proc(proc);
+  if (proc->next != NULL) delete_proc(proc->next);
   free(proc);
 }
 
@@ -55,7 +55,8 @@ void reap_children() {
   struct signalfd_siginfo ssi;
   siginfo_t si;
   while (read(fd_chld, &ssi, sizeof(ssi)) == sizeof(ssi)) {
-    fprintf(stderr, "Received SIGCHLD for %d with %d.\n", ssi.ssi_pid, ssi.ssi_code);
+    fprintf(stderr, "Received SIGCHLD for %d with %d.\n", ssi.ssi_pid,
+            ssi.ssi_code);
     pid_t pgid = getpgid(ssi.ssi_pid);  // also works for a defunct one
     struct job_t **job = find_job(pgid);
     if (job == NULL) continue;
@@ -92,5 +93,46 @@ void reap_children() {
   }
   if (errno != EAGAIN && errno != EWOULDBLOCK) {
     perror("Cannot read signalfd");
+  }
+}
+
+void wait_on_pgrp(pid_t pgrp) {
+  siginfo_t si;
+  for (;;) {
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(fd_chld, &fds);
+    int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
+    if (r == -1) {
+      perror("Cannot wait on fds");
+      return;
+    }
+    if (FD_ISSET(fd_chld, &fds)) {
+      reap_children();
+    }
+    while (waitid(P_PGID, pgrp, &si, WEXITED | WSTOPPED | WNOHANG) != -1)
+      if (si.si_code == CLD_STOPPED) {
+        pid_t pgid = getpgid(si.si_pid);
+        struct job_t **job = find_job(pgid), *_job;
+        if (job == NULL) {
+          job = &_job;
+          *job = add_job(pgid);
+        }
+        struct procstat *now = NULL;
+        for (struct procstat *p = (*job)->procstats; p; p = p->next) {
+          if (p == NULL) break;
+          if (p->pid == si.si_pid) {
+            now = p;
+          }
+        }
+        if (now == NULL) now = malloc(sizeof(struct procstat));
+        now->pid = si.si_pid;
+        now->status = PROCSTAT_STOPPED;
+        now->retval = -1;
+        now->next = (*job)->procstats;
+        (*job)->procstats = now;
+        return;
+      }
+    if (errno == ECHILD) return;
   }
 }

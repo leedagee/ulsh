@@ -52,4 +52,6 @@ void builtin_init() {
 
   // jobops
   BUILTIN_ADD_COMMAND(jobs);
+  BUILTIN_ADD_COMMAND(fg);
+  BUILTIN_ADD_COMMAND(bg);
 }

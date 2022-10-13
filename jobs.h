@@ -34,3 +34,4 @@ struct job_t **find_job(int pgid);
 void delete_proc(struct procstat *proc);
 void add_proc(struct job_t *job, struct procstat *proc);
 void reap_children();
+void wait_on_pgrp(pid_t pgrp);

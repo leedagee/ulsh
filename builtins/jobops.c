@@ -11,3 +11,14 @@ BUILTIN_DECLARE(jobs) {
   }
   return 0;
 }
+
+BUILTIN_DECLARE(fg) {
+  struct job_t *job = jobs_head;
+  killpg(job->pgid, SIGCONT);
+  wait_on_pgrp(job->pgid);
+}
+
+BUILTIN_DECLARE(bg) {
+  struct job_t *job = jobs_head;
+  killpg(job->pgid, SIGCONT);
+}
