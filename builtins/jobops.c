@@ -1,6 +1,7 @@
 #include "jobops.h"
 
 #include <stdio.h>
+#include <unistd.h>
 #include "../jobs.h"
 
 BUILTIN_DECLARE(jobs) {
@@ -14,8 +15,9 @@ BUILTIN_DECLARE(jobs) {
 
 BUILTIN_DECLARE(fg) {
   struct job_t *job = jobs_head;
+  tcsetpgrp(255, job->pgid);
+  foreground = job->pgid;
   killpg(job->pgid, SIGCONT);
-  wait_on_pgrp(job->pgid);
 }
 
 BUILTIN_DECLARE(bg) {

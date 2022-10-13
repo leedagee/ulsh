@@ -1,6 +1,7 @@
 #include "jobs.h"
 
 #include <asm-generic/errno.h>
+#include <assert.h>
 #include <bits/types/siginfo_t.h>
 #include <errno.h>
 #include <stdio.h>
@@ -10,8 +11,12 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "prompt.h"
+#include "readline.h"
+
 struct job_t *jobs_head;
-int got_sigchld = 0, fd_chld;
+pid_t foreground;
+int sigchld_pipes[2];
 
 struct job_t *add_job(int pgid) {
   struct job_t *job = malloc(sizeof(struct job_t));
@@ -51,88 +56,84 @@ struct job_t **find_job(int pgid) {
   return NULL;
 }
 
-void reap_children() {
-  struct signalfd_siginfo ssi;
-  siginfo_t si;
-  while (read(fd_chld, &ssi, sizeof(ssi)) == sizeof(ssi)) {
-    fprintf(stderr, "Received SIGCHLD for %d with %d.\n", ssi.ssi_pid,
-            ssi.ssi_code);
-    pid_t pgid = getpgid(ssi.ssi_pid);  // also works for a defunct one
-    struct job_t **job = find_job(pgid);
-    if (job == NULL) continue;
-    for (struct procstat *p = (*job)->procstats; p; p = p->next) {
-      if (p->pid == ssi.ssi_pid) {
-        switch (ssi.ssi_code) {
-          case CLD_STOPPED:
-            p->status = PROCSTAT_STOPPED;
-            break;
-          case CLD_EXITED:
-            p->status = PROCSTAT_EXITED;
-            p->retval = ssi.ssi_status;
-            break;
-          case CLD_CONTINUED:
-            p->status = PROCSTAT_RUNNING;
-            break;
-        }
-        break;
+void find_procstat(pid_t pid, struct job_t **job, struct procstat **proc) {
+  for (struct job_t *j = jobs_head; j; j = j->next) {
+    for (struct procstat *p = j->procstats; p; p = p->next) {
+      if (p->pid == pid) {
+        *job = j;
+        *proc = p;
+        return;
       }
     }
-    int pgst = 0;
-    for (struct procstat *p = (*job)->procstats; p; p = p->next) {
-      pgst |= p->status;
-    }
-    if (!(pgst & (PROCSTAT_RUNNING | PROCSTAT_STOPPED))) {
-      // procs in group r all dead, reap the whole group
-      errno = 0;
-      while (waitid(P_PGID, pgid, &si, WNOHANG | WEXITED) != -1)
-        ;
-      if (errno != ECHILD) perror("Cannot reap children");
-      delete_job(job);
-      fprintf(stderr, "Process group %d dead. RIP.\n", pgid);
-    }
-  }
-  if (errno != EAGAIN && errno != EWOULDBLOCK) {
-    perror("Cannot read signalfd");
   }
 }
 
-void wait_on_pgrp(pid_t pgrp) {
-  siginfo_t si;
-  for (;;) {
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(fd_chld, &fds);
-    int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
-    if (r == -1) {
-      perror("Cannot wait on fds");
-      return;
-    }
-    if (FD_ISSET(fd_chld, &fds)) {
-      reap_children();
-    }
-    while (waitid(P_PGID, pgrp, &si, WEXITED | WSTOPPED | WNOHANG) != -1)
-      if (si.si_code == CLD_STOPPED) {
-        pid_t pgid = getpgid(si.si_pid);
-        struct job_t **job = find_job(pgid), *_job;
-        if (job == NULL) {
-          job = &_job;
-          *job = add_job(pgid);
-        }
-        struct procstat *now = NULL;
-        for (struct procstat *p = (*job)->procstats; p; p = p->next) {
-          if (p == NULL) break;
-          if (p->pid == si.si_pid) {
-            now = p;
-          }
-        }
-        if (now == NULL) now = malloc(sizeof(struct procstat));
-        now->pid = si.si_pid;
-        now->status = PROCSTAT_STOPPED;
-        now->retval = -1;
-        now->next = (*job)->procstats;
-        (*job)->procstats = now;
-        return;
-      }
-    if (errno == ECHILD) return;
+void on_child_stopped(pid_t pid) {
+  struct job_t *job;
+  struct procstat *p;
+  find_procstat(pid, &job, &p);
+  p->status = PROCSTAT_STOPPED;
+  pid_t pgrp = getpgid(pid);
+  if (foreground == pgrp) {
+    tcsetpgrp(255, getpid());
+    foreground = getpid();
   }
+}
+
+void on_child_running(pid_t pid) {
+  struct job_t *job;
+  struct procstat *p;
+  find_procstat(pid, &job, &p);
+  p->status = PROCSTAT_RUNNING;
+}
+
+void on_child_exited(pid_t pid) {
+  struct job_t *job;
+  struct procstat *p;
+  siginfo_t si;
+  find_procstat(pid, &job, &p);
+  p->status = PROCSTAT_EXITED;
+  int pgst = 0;
+  for (struct procstat *i = job->procstats; i; i = i->next) {
+    pgst |= i->status;
+  }
+  if (!(pgst & (PROCSTAT_RUNNING | PROCSTAT_STOPPED))) {
+    //fprintf(stderr, "Process group %d dead. RIP.\n", job->pgid);
+    // procs in group r all dead, reap the whole group
+    errno = 0;
+    while (waitid(P_PGID, job->pgid, &si, WNOHANG | WEXITED) != -1)
+      ;
+    if (errno != ECHILD) perror("Cannot reap children");
+    if (foreground == job->pgid) {
+      tcsetpgrp(255, getpid());
+      foreground = getpid();
+    }
+    delete_job(find_job(job->pgid));
+  }
+}
+
+void reap_children() {
+  siginfo_t si;
+  char c;
+  while (read(sigchld_pipes[0], &c, 1) == 1) assert(c == '.');
+  assert(errno == EAGAIN || errno == EWOULDBLOCK);
+  errno = 0;
+  // signalfd is still unreliable, use waitid to receive more
+  for (;;) {
+    int r = waitid(P_ALL, 0, &si, WEXITED | WCONTINUED | WSTOPPED | WNOHANG);
+    if (r == -1) break;
+    if (si.si_pid == 0) return;
+    switch (si.si_code) {
+      case CLD_CONTINUED:
+        on_child_running(si.si_pid);
+        break;
+      case CLD_STOPPED:
+        on_child_stopped(si.si_pid);
+        break;
+      case CLD_EXITED:
+        on_child_exited(si.si_pid);
+        break;
+    }
+  }
+  if (errno != ECHILD) perror("Cannot receive info for stopped children");
 }

@@ -7,3 +7,4 @@
 // the returned string is allocated by malloc(3)
 // the caller should free(3) it
 char* getprompt();
+void printprompt();

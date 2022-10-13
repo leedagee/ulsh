@@ -55,5 +55,16 @@ char *getprompt() {
     avail -= consumed;
   }
 
+  consumed = snprintf(cursor, avail, "\n> ");
+  cursor += consumed;
+  avail -= consumed;
+
   return prompt;
+}
+
+void printprompt() {
+  char *p = getprompt();
+  fputs(p, stdout);
+  fflush(stdout);
+  free(p);
 }

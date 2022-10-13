@@ -10,6 +10,8 @@
 #define EXECUTE_DUP_STDOUT 0x0004
 #define EXECUTE_FOREGROUND 0x0008
 
+#define EXECUTE_RESULT_BUILTIN  1
+
 pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
               pid_t pgrp);
 

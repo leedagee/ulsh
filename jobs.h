@@ -25,8 +25,8 @@ struct job_t {
 };
 
 extern struct job_t *jobs_head;
-extern int got_sigchld;
-extern int fd_chld;
+extern pid_t foreground;
+extern int sigchld_pipes[2];
 
 struct job_t *add_job(int pgid);
 void delete_job(struct job_t **job);
@@ -34,4 +34,3 @@ struct job_t **find_job(int pgid);
 void delete_proc(struct procstat *proc);
 void add_proc(struct job_t *job, struct procstat *proc);
 void reap_children();
-void wait_on_pgrp(pid_t pgrp);

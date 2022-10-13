@@ -20,10 +20,13 @@
 #include "parser.h"
 #include "prompt.h"
 
+void sigchld_handler(int sig, siginfo_t *si, void *data) {
+  write(sigchld_pipes[1], ".", 1);
+}
+
 static void handle_line(char *cmd) {
   if (cmd == NULL) {
     putchar('\n');
-    free(cmd);
     exit(0);
   }
 
@@ -32,30 +35,27 @@ static void handle_line(char *cmd) {
 
   while (cur < end) {
     struct parse_result_t *res;
-    ssize_t s = parse_command(cur, &res);
-    if (s == -1) break;
+    ssize_t len = parse_command(cur, &res);
+    if (len == -1) break;
     struct procstat *proc = NULL;
-    siginfo_t si;
-    si.si_pid = 0;
-    int r = run_parsed(res, &proc, 0, -1);
-    if (r == 1) goto finalize;
-    if (proc == NULL) goto finalize;
-    pid_t pid = proc->pid;
-    if (!(res->flags & PARSE_RESULT_BACKGROUND)) {
-      wait_on_pgrp(pid);
-    }
-
-  finalize:
-    if (!(res->flags & PARSE_RESULT_BACKGROUND) && r != 1) delete_proc(proc);
-    tcsetpgrp(255, getpid());
+    run_parsed(res, &proc, 0, -1);
     if (res != NULL) free_parse_result(res);
-    cur += s;
+    cur += len;
   }
   free(cmd);
 
-  char *prompt = getprompt();
-  puts(prompt);
-  free(prompt);
+  while (foreground != getpid()) {
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(sigchld_pipes[0], &fds);
+    errno = 0;
+    int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
+    if (errno == EINTR) continue;
+    if (r == -1) perror("Cannot wait on fds");
+    if (FD_ISSET(sigchld_pipes[0], &fds)) {
+      reap_children();
+    }
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -65,8 +65,21 @@ int main(int argc, char *argv[]) {
   if (fd_tty == -1) perror("Cannot set fd 255 to the console");
   close(fd_tty);
 
+  pipe(sigchld_pipes);
+  int old_flags = fcntl(sigchld_pipes[0], F_GETFL);
+  fcntl(sigchld_pipes[0], F_SETFL, O_NONBLOCK | old_flags);
+
   signal(SIGTTOU, SIG_IGN);
   signal(SIGTTIN, SIG_IGN);
+  signal(SIGTSTP, SIG_IGN);
+  signal(SIGQUIT, SIG_IGN);
+
+  struct sigaction sa;
+  sa.sa_flags = SA_RESTART | SA_SIGINFO;
+  sa.sa_sigaction = sigchld_handler;
+  sigemptyset(&sa.sa_mask);
+  sigaddset(&sa.sa_mask, SIGCHLD);
+  sigaction(SIGCHLD, &sa, NULL);
 
   setpgid(0, 0);
 
@@ -74,28 +87,28 @@ int main(int argc, char *argv[]) {
   if (tcsetpgrp(255, getpid()) == -1) {
     perror("Cannot set foreground process group");
   }
+  foreground = getpid();
 
   builtin_init();
-  rl_callback_handler_install("> ", handle_line);
+
+  char *prompt = getprompt();
+  rl_callback_handler_install(prompt, handle_line);
 
   fd_set fds;
 
-  sigset_t mask;
-  sigemptyset(&mask);
-  sigaddset(&mask, SIGCHLD);
-  sigprocmask(SIG_BLOCK, &mask, NULL);
-  fd_chld = signalfd(-1, &mask, SFD_CLOEXEC | SFD_NONBLOCK);
-
   for (;;) {
     FD_ZERO(&fds);
-    FD_SET(0, &fds);
-    FD_SET(fd_chld, &fds);
+    if (foreground == getpid()) FD_SET(0, &fds);
+    FD_SET(sigchld_pipes[0], &fds);
     int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
     if (r == -1) {
+      if (errno == EINTR) continue;
       perror("Cannot wait on fds");
     } else if (FD_ISSET(fileno(rl_instream), &fds)) {
+      free(prompt);
+      rl_set_prompt(prompt = getprompt());
       rl_callback_read_char();
-    } else if (FD_ISSET(fd_chld, &fds)) {
+    } else if (FD_ISSET(sigchld_pipes[0], &fds)) {
       reap_children();
     }
   }

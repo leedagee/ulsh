@@ -18,6 +18,7 @@ int last_return_value;
 
 extern char **environ;
 
+// return 0 for a builtin run
 pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
               pid_t pgrp) {
   BUILTIN_HANDLER handler = builtin_find_entry(argv[0]);
@@ -61,6 +62,7 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
 
   if (flags & EXECUTE_DUP_STDIN) close(fd_in);
   if (flags & EXECUTE_DUP_STDOUT) close(fd_out);
+  if ((flags & EXECUTE_FOREGROUND) && pgrp == 0) foreground = pid;
 
   return pid;
 }
@@ -107,8 +109,7 @@ int run_parsed(struct parse_result_t *res, struct procstat **proc, pid_t pgrp,
   pid_t pid;
   pid = execute(options, res->argc, res->argv, fd_in, fd_out, pgrp);
 
-  if (pid == 0)
-    return 1;
+  if (pid == 0) return EXECUTE_RESULT_BUILTIN;
 
   struct procstat *newproc = malloc(sizeof(struct procstat));
   newproc->next = NULL;
@@ -119,10 +120,8 @@ int run_parsed(struct parse_result_t *res, struct procstat **proc, pid_t pgrp,
   if (proc != NULL) *proc = newproc;
   if (pgrp == 0) {
     pgrp = pid;
-    if (res->flags & PARSE_RESULT_BACKGROUND) {
-      struct job_t *job = add_job(pid);
-      job->procstats = newproc;
-    }
+    struct job_t *job = add_job(pid);
+    job->procstats = newproc;
   }
 
   if (res->next != NULL) {
