@@ -22,6 +22,7 @@ struct job_t {
   uint16_t flags;
   pid_t pgid;
   struct procstat *procstats;
+  char *cmd;
 };
 
 extern struct job_t *jobs_head;

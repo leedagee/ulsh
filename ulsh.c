@@ -22,6 +22,7 @@
 
 void sigchld_handler(int sig, siginfo_t *si, void *data) {
   write(sigchld_pipes[1], ".", 1);
+  write(2, "ON SIGCHLD!\n", 12);
 }
 
 static void handle_line(char *cmd) {
@@ -36,26 +37,29 @@ static void handle_line(char *cmd) {
   while (cur < end) {
     struct parse_result_t *res;
     ssize_t len = parse_command(cur, &res);
+    char *comm = malloc(len + 1);
+    strncpy(comm, cur, len);
     if (len == -1) break;
     struct procstat *proc = NULL;
-    run_parsed(res, &proc, 0, -1);
+    if (run_parsed(res, &proc, 0, -1, comm) == EXECUTE_RESULT_BUILTIN)
+      free(comm);
     if (res != NULL) free_parse_result(res);
     cur += len;
-  }
-  free(cmd);
 
-  while (foreground != getpid()) {
-    fd_set fds;
-    FD_ZERO(&fds);
-    FD_SET(sigchld_pipes[0], &fds);
-    errno = 0;
-    int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
-    if (errno == EINTR) continue;
-    if (r == -1) perror("Cannot wait on fds");
-    if (FD_ISSET(sigchld_pipes[0], &fds)) {
-      reap_children();
+    while (foreground != getpid()) {
+      fd_set fds;
+      FD_ZERO(&fds);
+      FD_SET(sigchld_pipes[0], &fds);
+      errno = 0;
+      int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
+      if (errno == EINTR) continue;
+      if (r == -1) perror("Cannot wait on fds");
+      if (FD_ISSET(sigchld_pipes[0], &fds)) {
+        reap_children();
+      }
     }
   }
+  free(cmd);
 }
 
 int main(int argc, char *argv[]) {
@@ -98,7 +102,7 @@ int main(int argc, char *argv[]) {
 
   for (;;) {
     FD_ZERO(&fds);
-    if (foreground == getpid()) FD_SET(0, &fds);
+    FD_SET(0, &fds);
     FD_SET(sigchld_pipes[0], &fds);
     int r = select(FD_SETSIZE, &fds, NULL, NULL, NULL);
     if (r == -1) {

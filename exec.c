@@ -36,6 +36,11 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
           if (flags & EXECUTE_FOREGROUND && pgrp == 0) {
             tcsetpgrp(255, getpid());
           }
+          signal(SIGCHLD, SIG_DFL);
+          signal(SIGTSTP, SIG_DFL);
+          signal(SIGTTIN, SIG_DFL);
+          signal(SIGTTOU, SIG_DFL);
+          signal(SIGQUIT, SIG_DFL);
           exit(handler(argc, argv));
           break;
       }
@@ -51,6 +56,11 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
       if ((flags & EXECUTE_FOREGROUND) && pgrp == 0) {
         tcsetpgrp(255, getpid());
       }
+      signal(SIGCHLD, SIG_DFL);
+      signal(SIGTSTP, SIG_DFL);
+      signal(SIGTTIN, SIG_DFL);
+      signal(SIGTTOU, SIG_DFL);
+      signal(SIGQUIT, SIG_DFL);
       execvp(argv[0], argv);
       perror("Failed to exec");
       exit(1);
@@ -68,7 +78,7 @@ pid_t execute(int flags, int argc, char *argv[], int fd_in, int fd_out,
 }
 
 int run_parsed(struct parse_result_t *res, struct procstat **proc, pid_t pgrp,
-               int fd_in) {
+               int fd_in, char *cmd) {
   int fd_out = -1;
   if (res->f_in) {
     if (fd_in) close(fd_in);
@@ -122,9 +132,10 @@ int run_parsed(struct parse_result_t *res, struct procstat **proc, pid_t pgrp,
     pgrp = pid;
     struct job_t *job = add_job(pid);
     job->procstats = newproc;
+    job->cmd = cmd;
   }
 
   if (res->next != NULL) {
-    run_parsed(res->next, &newproc->next, pgrp, pipefd[0]);
+    run_parsed(res->next, &newproc->next, pgrp, pipefd[0], cmd);
   }
 }
