@@ -29,7 +29,7 @@ char *getprompt() {
     perror("Cannot get passwd entry");
     return "> ";
   }
-  consumed = snprintf(cursor, avail, "%s@%s ", pw->pw_name, buf);
+  consumed = snprintf(cursor, avail, "\n%s@%s ", pw->pw_name, buf);
   cursor += consumed;
   avail -= consumed;
 

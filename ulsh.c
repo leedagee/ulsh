@@ -22,7 +22,9 @@
 
 void sigchld_handler(int sig, siginfo_t *si, void *data) {
   write(sigchld_pipes[1], ".", 1);
+#ifdef DEBUG_CHLD
   write(2, "ON SIGCHLD!\n", 12);
+#endif
 }
 
 static void handle_line(char *cmd) {
@@ -37,6 +39,10 @@ static void handle_line(char *cmd) {
   while (cur < end) {
     struct parse_result_t *res;
     ssize_t len = parse_command(cur, &res);
+    if (res == NULL) {
+      cur += len;
+      continue;
+    }
     char *comm = malloc(len + 1);
     strncpy(comm, cur, len);
     if (len == -1) break;

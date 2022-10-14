@@ -120,9 +120,10 @@ ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
     res->flags |= PARSE_RESULT_APPEND;
   }
 
-  ssize_t len = c - cmd + 1, nlen = 0;
+  ssize_t len = c - cmd + (*c != '\0' ? 1 : 0), nlen = 0;
 
   if (cargc == 0) {
+    free_parse_result(res);
     return len;
   }
 
@@ -132,8 +133,13 @@ ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
     case '|':
       nlen = parse_command(c + 1, &res->next);
       if (nlen == -1) return -1;
-      res->flags |=
-          (res->next->flags & PARSE_RESULT_BACKGROUND) | PARSE_RESULT_PIPE;
+      if (res->next == NULL) {
+        fprintf(stderr, "Syntax Error: failed parsing pipe target");
+        *comp = NULL;
+        free_parse_result(res);
+      } else
+        res->flags |=
+            (res->next->flags & PARSE_RESULT_BACKGROUND) | PARSE_RESULT_PIPE;
       return len + nlen;
     case '&':
       res->flags |= PARSE_RESULT_BACKGROUND;
@@ -148,6 +154,7 @@ ssize_t parse_command(const char *cmd, struct parse_result_t **comp) {
 }
 
 void free_parse_result(struct parse_result_t *res) {
+  if (res == NULL) return;
   if (res->next) {
     free_parse_result(res->next);
   }

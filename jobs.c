@@ -125,7 +125,9 @@ void reap_children() {
     int r = waitid(P_ALL, 0, &si, WEXITED | WCONTINUED | WSTOPPED | WNOHANG);
     if (r == -1) break;
     if (si.si_pid == 0) return;
+#ifdef DEBUG_CHLD
     fprintf(stderr, "%d has changed its state to %d.\n", si.si_pid, si.si_code);
+#endif
     switch (si.si_code) {
       case CLD_CONTINUED:
         on_child_running(si.si_pid);
